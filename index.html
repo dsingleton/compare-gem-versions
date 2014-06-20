@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <title>Gem Version Compare</title>
+  <style type="text/css">
+  body {
+    margin: 0;
+    padding: 0;
+
+    font: medium/1.4 sans-serif;
+    color: #222;
+    background: #fff
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 3vw;
+    background: dodgerBlue;
+    color: #fff;
+    padding: 1vw 4vw;
+    font-weight: normal;
+  }
+
+  table {
+    width: 100%;
+  }
+
+  table th {
+    text-align: left;
+    padding: 2vw 4vw 0;
+    color: #ccc;
+    font-weight: normal;
+    font-size: 2vw;
+  }
+
+  table td {
+    font-size: 4vw;
+    padding: 2vw 4vw;
+    border-bottom: 1px solid #ccc;
+  }
+
+  table td.name a {
+    text-decoration: none;
+    color: #222;
+  }
+
+  table td.time {
+    font-size: 3vw;
+    color: #888;
+  }
+
+  table td.commits,
+  table td.merges {
+    text-align: center;
+  }
+
+  table tr.good td.commits,
+  table tr.good td.merges {
+    color: green;
+  }
+
+  table tr.stale td.commits,
+  table tr.stale td.merges, {
+    color: red;
+  }
+
+  table tr.unknown td.commits,
+  table tr.unknown td.merges {
+    color: orange;
+  }
+
+  </style>
+</head>
+<body>
+
+<h1>Gem Versions</h1>
+
+<table id="comparison">
+  <thead>
+    <tr>
+      <th>App/Version</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js"></script>
+<script>
+
+function getQueryVariable(variable) {
+  var query = window.location.search.substring(1);
+  var vars = query.split("&");
+  for (var i = 0; i < vars.length; i++) {
+    var pair = vars[i].split("=");
+    if (pair[0] === variable) {
+      return pair[1];
+    }
+  }
+  return false;
+};
+
+var repo_to_class = function(repo) {
+  return repo.replace('/', '-');
+}
+
+var get_gem_version = function(gem, gemfile) {
+  var match = gemfile.match(new RegExp("'" + gem + "'(, '(.*)'|$)"));
+  if (!match) {
+    // Gem not found
+    return false
+  }
+  // version string, or something to mark no version (as false is a valid return  )
+  return match[2] || Infinity;
+};
+
+$(document).ready(function() {
+   gemGrid = {};
+  var repos = getQueryVariable('repos').split(',');
+  var gems = getQueryVariable('gems').split(',');
+  var refresh_rate = (getQueryVariable('refresh') || 60) * 1000;
+  var at_tag = getQueryVariable('at');
+  var api_token = getQueryVariable('token');
+
+  var $table = $('#comparison');
+
+  var get_gem_file_api_url = function(repo, at_tag) {
+    var api_url = 'https://api.github.com/repos/' + repo + '/contents/Gemfile'
+    if (at_tag) {
+      api_url += '?ref=' + at_tag
+    }
+    return api_url;
+  }
+
+  initialise(repos, gems);
+  update(repos, gems, refresh_rate);
+
+  function initialise(repos, gems) {
+    $(repos).each(function(i, repo) {
+      $table.find('thead tr').append($('<th>').text(repo))
+    });
+
+    $(gems).each(function(i, gem) {
+      var $row = $('<tr>').attr('class', 'gem-' + gem).append($('<th>').text(gem));
+      $(repos).each(function(i, repo) {
+        $row.append($('<td>').attr('class', repo_to_class(repo)));
+      });
+      $table.find('tbody').append($row);
+
+      gemGrid[gem] = {};
+    });
+  }
+
+  function update(repos, gems, refresh_rate) {
+    $(repos).each(function(i, repo) {
+      $.ajax({
+        url: get_gem_file_api_url(repo, at_tag),
+        dataType: 'json',
+        headers: {
+          'Authorization': 'token ' + api_token
+        },
+        success: function(response) {
+          var gemfile = atob(response.content);
+          $(gems).each(function(i, gem) {
+            $table.find('tr.gem-' + gem + ' td.' + repo_to_class(repo)).text(get_gem_version(gem, gemfile)|| 'n/a');
+          });
+        },
+        error: function(error) {
+          debugger;
+        }
+      });
+    });
+
+    if (refresh_rate) {
+      setTimeout(function() {
+        update(repos, refresh_rate);
+      }, refresh_rate);
+    }
+  }
+});
+
+</script>
+</body>
+</html>
